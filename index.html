@@ -80,13 +80,18 @@
     input[type=text] { width:100%; padding:9px 12px; font-size:13px; font-family:var(--mono); border:1px solid var(--border2); border-radius:8px; background:var(--surface2); color:var(--text); -webkit-appearance:none; transition:border-color 0.2s; }
     input[type=text]:focus { outline:none; border-color:var(--blue); }
 
-    /* subfolder selector */
-    .subfolder-grid { display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-top:4px; }
-    .sf-btn { padding:10px 8px; border-radius:10px; border:1px solid var(--border2); background:var(--surface2); color:var(--text); font-family:var(--display); font-size:12px; font-weight:600; cursor:pointer; text-align:center; transition:all 0.15s; display:flex; align-items:center; gap:6px; justify-content:center; }
-    .sf-btn:active { transform:scale(0.96); }
-    .sf-btn.selected { background:var(--blue); border-color:transparent; color:#fff; }
-    .sf-btn .sf-icon { font-size:14px; flex-shrink:0; }
-    .sf-name { white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+    /* subfolder dropdown */
+    .sf-select-wrap { position:relative; }
+    .sf-select {
+      width:100%; padding:9px 32px 9px 12px; font-size:13px; font-family:var(--mono);
+      border:1px solid var(--border2); border-radius:8px;
+      background:var(--surface2); color:var(--text);
+      -webkit-appearance:none; appearance:none; cursor:pointer;
+      transition:border-color 0.2s;
+    }
+    .sf-select:focus { outline:none; border-color:var(--blue); }
+    .sf-select:disabled { opacity:0.4; cursor:not-allowed; }
+    .sf-arrow { position:absolute; right:10px; top:50%; transform:translateY(-50%); pointer-events:none; color:var(--muted); font-size:11px; }
     .sf-loading { font-family:var(--mono); font-size:11px; color:var(--muted); padding:10px 0; text-align:center; }
     .sf-hint { font-family:var(--mono); font-size:10px; color:var(--muted); margin-top:6px; line-height:1.5; }
 
@@ -143,8 +148,11 @@
           </div>
           <div class="field-wrap">
             <div class="field-label">Subfolder in Entrevues</div>
-            <div id="subfolder-grid" class="subfolder-grid">
-              <div class="sf-loading">sign in to load folders</div>
+            <div class="sf-select-wrap">
+              <select class="sf-select" id="subfolder-select" onchange="onSubfolderChange()" disabled>
+                <option value="">sign in to load folders</option>
+              </select>
+              <span class="sf-arrow">▼</span>
             </div>
             <div class="sf-hint" id="sf-hint">videos upload to the selected subfolder inside "Entrevues"</div>
           </div>
@@ -317,72 +325,70 @@ function saveRecording() {
 
 /* ── find Entrevues folder then load its subfolders ── */
 async function loadEntrevuesFolders() {
-  const grid=document.getElementById('subfolder-grid');
-  grid.innerHTML='<div class="sf-loading">finding Entrevues folder…</div>';
+  const sel = document.getElementById('subfolder-select');
+  sel.disabled = true;
+  sel.innerHTML = '<option value="">finding Entrevues folder…</option>';
   try {
-    // Search across all drives (including shared)
-    const q=`name='${TARGET_FOLDER_NAME}' and mimeType='application/vnd.google-apps.folder' and trashed=false`;
-    const res=await fetch(
+    const q = `name='${TARGET_FOLDER_NAME}' and mimeType='application/vnd.google-apps.folder' and trashed=false`;
+    const res = await fetch(
       `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(q)}&includeItemsFromAllDrives=true&supportsAllDrives=true&corpora=allDrives&fields=files(id,name,parents)`,
       {headers:{Authorization:`Bearer ${accessToken}`}}
     );
-    const data=await res.json();
-    if (!data.files||!data.files.length) {
-      grid.innerHTML='<div class="sf-loading">could not find "Entrevues" folder.<br>make sure it\'s shared with your google account.</div>';
+    const data = await res.json();
+    if (!data.files || !data.files.length) {
+      sel.innerHTML = '<option value="">⚠ Entrevues folder not found</option>';
+      document.getElementById('sf-hint').textContent = 'make sure the folder is shared with your google account.';
       return;
     }
-    entrevuesFolderId=data.files[0].id;
+    entrevuesFolderId = data.files[0].id;
     await loadSubfolders(entrevuesFolderId);
   } catch(e) {
-    grid.innerHTML=`<div class="sf-loading">error: ${e.message}</div>`;
+    sel.innerHTML = `<option value="">error: ${e.message}</option>`;
   }
 }
 
 async function loadSubfolders(parentId) {
-  const grid=document.getElementById('subfolder-grid');
-  grid.innerHTML='<div class="sf-loading">loading subfolders…</div>';
+  const sel = document.getElementById('subfolder-select');
+  sel.innerHTML = '<option value="">loading subfolders…</option>';
   try {
-    const q=`'${parentId}' in parents and mimeType='application/vnd.google-apps.folder' and trashed=false`;
-    const res=await fetch(
+    const q = `'${parentId}' in parents and mimeType='application/vnd.google-apps.folder' and trashed=false`;
+    const res = await fetch(
       `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(q)}&includeItemsFromAllDrives=true&supportsAllDrives=true&orderBy=name&fields=files(id,name)&pageSize=50`,
       {headers:{Authorization:`Bearer ${accessToken}`}}
     );
-    const data=await res.json();
-    const folders=data.files||[];
+    const data = await res.json();
+    const folders = data.files || [];
+    const allOptions = [{id: parentId, name: '📁 Entrevues (root)'}, ...folders.map(f => ({id: f.id, name: '📁 ' + f.name}))];
 
-    // Always include "Entrevues" root itself as an option
-    const allOptions=[{id:parentId, name:'Entrevues (root)'}, ...folders];
+    sel.innerHTML = allOptions.map(f =>
+      `<option value="${f.id}" ${selectedFolderId===f.id?'selected':''}>${f.name}</option>`
+    ).join('');
+    sel.disabled = false;
 
-    grid.innerHTML=allOptions.map(f=>{
-      const isSel=selectedFolderId===f.id;
-      return `<button class="sf-btn ${isSel?'selected':''}" onclick="selectSubfolder('${f.id}','${f.name.replace(/'/g,"\\'")}')">
-        <span class="sf-icon">📁</span>
-        <span class="sf-name">${f.name}</span>
-      </button>`;
-    }).join('');
-
-    // Auto-select first subfolder if nothing selected yet
-    if (!selectedFolderId && allOptions.length) {
-      selectSubfolder(allOptions[0].id, allOptions[0].name);
+    // Auto-select saved folder or first option
+    if (selectedFolderId && allOptions.find(f => f.id === selectedFolderId)) {
+      sel.value = selectedFolderId;
+    } else {
+      sel.value = allOptions[0].id;
+      selectedFolderId = allOptions[0].id;
+      selectedFolderName = allOptions[0].name;
+      saveSettings();
     }
 
     document.getElementById('sf-hint').textContent =
       folders.length
-        ? `${folders.length} subfolder${folders.length!==1?'s':''} found inside Entrevues`
-        : 'no subfolders found — videos will go into Entrevues directly';
+        ? `${folders.length} subfolder${folders.length !== 1 ? 's' : ''} found inside Entrevues`
+        : 'no subfolders — videos will go into Entrevues directly';
   } catch(e) {
-    grid.innerHTML=`<div class="sf-loading">error loading subfolders: ${e.message}</div>`;
+    sel.innerHTML = `<option value="">error: ${e.message}</option>`;
   }
 }
 
-function selectSubfolder(id, name) {
-  selectedFolderId=id; selectedFolderName=name;
+function onSubfolderChange() {
+  const sel = document.getElementById('subfolder-select');
+  selectedFolderId = sel.value;
+  selectedFolderName = sel.options[sel.selectedIndex]?.text || '';
   saveSettings();
-  // Re-render grid to show selection
-  document.querySelectorAll('.sf-btn').forEach(btn=>{
-    btn.classList.toggle('selected', btn.querySelector('.sf-name')?.textContent===name);
-  });
-  toast(`folder set: ${name}`,'info');
 }
 
 /* ── render recordings ── */
