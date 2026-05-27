@@ -1,519 +1,503 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover"/>
   <title>Capture</title>
-  <meta name="apple-mobile-web-app-capable" content="yes" />
-  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
-  <meta name="apple-mobile-web-app-title" content="Capture" />
+  <meta name="apple-mobile-web-app-capable" content="yes"/>
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
+  <meta name="apple-mobile-web-app-title" content="Capture"/>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Syne:wght@600;700;800&display=swap" rel="stylesheet">
   <script src="https://accounts.google.com/gsi/client" async defer></script>
   <style>
     :root {
       --bg:#0a0a0a; --surface:#141414; --surface2:#1e1e1e;
-      --border:rgba(255,255,255,0.08); --border2:rgba(255,255,255,0.14);
-      --text:#f0f0f0; --muted:#888; --accent:#ff3b3b;
+      --border:rgba(255,255,255,0.08); --border2:rgba(255,255,255,0.16);
+      --text:#f0f0f0; --muted:#777; --accent:#ff3b3b;
       --green:#2ecc71; --blue:#3b82f6;
-      --mono:'DM Mono',monospace; --display:'Syne',sans-serif;
+      --mono:'DM Mono',monospace; --ui:'Syne',sans-serif;
+      --safe-top:env(safe-area-inset-top,0px);
+      --safe-bot:env(safe-area-inset-bottom,0px);
+      --safe-l:env(safe-area-inset-left,0px);
+      --safe-r:env(safe-area-inset-right,0px);
     }
-    * { box-sizing:border-box; margin:0; padding:0; -webkit-tap-highlight-color:transparent; }
-    html,body { height:100%; background:var(--bg); color:var(--text); font-family:var(--display); overflow-x:hidden; }
-    @import url('https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Syne:wght@400;600;700;800&display=swap');
+    *, *::before, *::after { box-sizing:border-box; margin:0; padding:0; -webkit-tap-highlight-color:transparent; }
+    html, body { height:100%; overflow:hidden; background:var(--bg); color:var(--text); font-family:var(--ui); }
 
-    #shell { display:grid; grid-template-columns:1fr; grid-template-rows:auto 1fr auto; min-height:100dvh; padding:env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left); }
-
-    #header { display:flex; align-items:center; justify-content:space-between; padding:14px 20px 10px; border-bottom:1px solid var(--border); }
-    .logo { font-size:22px; font-weight:800; letter-spacing:-0.5px; }
-    .logo span { color:var(--accent); }
-    .header-right { display:flex; align-items:center; gap:10px; }
-    #signin-pill { font-family:var(--mono); font-size:11px; padding:6px 14px; border-radius:100px; border:1px solid var(--border2); background:var(--surface); color:var(--muted); cursor:pointer; white-space:nowrap; transition:all 0.2s; }
-    #signin-pill:hover { border-color:var(--blue); color:var(--blue); }
-    #signin-pill.active { border-color:var(--green); color:var(--green); background:rgba(46,204,113,0.08); }
-    #status-dot { width:8px; height:8px; border-radius:50%; background:var(--muted); flex-shrink:0; transition:background 0.3s; }
-    #status-dot.green { background:var(--green); box-shadow:0 0 8px var(--green); }
-    #status-dot.red { background:var(--accent); box-shadow:0 0 8px var(--accent); animation:pdot 1s infinite; }
-    @keyframes pdot { 0%,100%{opacity:1}50%{opacity:0.3} }
-
-    #main { display:flex; flex-direction:column; overflow-y:auto; }
-    @media(orientation:portrait){ #main{padding:16px;gap:16px;} #viewfinder-wrap{width:100%;aspect-ratio:9/16;} }
-    @media(orientation:landscape){
-      #shell{grid-template-rows:auto 1fr;}
-      #main{flex-direction:row;align-items:stretch;padding:0;overflow:hidden;height:calc(100dvh - 53px);}
-      #viewfinder-wrap{flex:0 0 auto;width:calc((100dvh - 53px)*9/16);max-width:55vw;height:100%;aspect-ratio:unset;border-radius:0;}
-      #sidebar{flex:1;overflow-y:auto;padding:16px;display:flex;flex-direction:column;gap:12px;}
-      #footer{display:none;}
+    /* ═══════════════════════════════════════
+       PORTRAIT  — vertical stack
+    ═══════════════════════════════════════ */
+    #app {
+      display:flex; flex-direction:column;
+      height:100dvh;
+      padding-top:var(--safe-top);
+      padding-bottom:var(--safe-bot);
+      padding-left:var(--safe-l);
+      padding-right:var(--safe-r);
     }
 
-    #viewfinder-wrap { position:relative; background:#000; border-radius:16px; overflow:hidden; flex-shrink:0; display:flex; align-items:center; justify-content:center; }
-    #preview { width:100%; height:100%; object-fit:cover; display:none; }
-    #placeholder { position:absolute; inset:0; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:12px; }
-    .ph-icon { width:64px; height:64px; border-radius:50%; background:var(--surface2); border:1px solid var(--border2); display:flex; align-items:center; justify-content:center; font-size:28px; }
-    .ph-text { font-family:var(--mono); font-size:12px; color:var(--muted); text-align:center; line-height:1.6; }
-    #rec-badge { position:absolute; top:14px; left:14px; display:none; align-items:center; gap:6px; background:rgba(0,0,0,0.65); backdrop-filter:blur(8px); padding:5px 12px 5px 8px; border-radius:100px; font-family:var(--mono); font-size:12px; color:#fff; }
-    #rec-badge .dot { width:8px; height:8px; border-radius:50%; background:var(--accent); animation:pdot 1s infinite; }
-    #format-badge { position:absolute; top:14px; right:14px; background:rgba(0,0,0,0.55); backdrop-filter:blur(8px); font-family:var(--mono); font-size:11px; color:var(--muted); padding:4px 10px; border-radius:100px; }
+    /* header */
+    #hdr {
+      display:flex; align-items:center; justify-content:space-between;
+      padding:12px 16px 10px; border-bottom:1px solid var(--border);
+      flex-shrink:0;
+    }
+    .logo { font-size:20px; font-weight:800; letter-spacing:-0.5px; }
+    .logo em { color:var(--accent); font-style:normal; }
+    #hdr-right { display:flex; align-items:center; gap:8px; }
+    #sdot { width:8px; height:8px; border-radius:50%; background:var(--muted); transition:background .3s; flex-shrink:0; }
+    #sdot.g { background:var(--green); box-shadow:0 0 6px var(--green); }
+    #sdot.r { background:var(--accent); box-shadow:0 0 6px var(--accent); animation:blink 1s infinite; }
+    @keyframes blink{0%,100%{opacity:1}50%{opacity:.2}}
+    #gpill {
+      font-family:var(--mono); font-size:11px; padding:5px 12px;
+      border-radius:100px; border:1px solid var(--border2);
+      background:var(--surface); color:var(--muted); cursor:pointer;
+      white-space:nowrap; transition:all .2s;
+    }
+    #gpill.on { border-color:var(--green); color:var(--green); background:rgba(46,204,113,.08); }
 
-    #controls { display:flex; gap:10px; }
-    @media(orientation:portrait){ #footer{padding:12px 16px 16px;border-top:1px solid var(--border);} #controls{width:100%;} }
-    @media(orientation:landscape){ #controls{flex-direction:column;} }
+    /* portrait body */
+    #port-body {
+      display:flex; flex-direction:column; flex:1; overflow:hidden;
+    }
 
-    .ctrl-btn { flex:1; padding:13px 10px; border-radius:12px; border:1px solid var(--border2); background:var(--surface); color:var(--text); font-family:var(--display); font-size:14px; font-weight:700; cursor:pointer; display:flex; align-items:center; justify-content:center; gap:7px; transition:all 0.15s; }
-    .ctrl-btn:active { transform:scale(0.97); }
-    .ctrl-btn:disabled { opacity:0.3; cursor:not-allowed; }
-    .ctrl-btn.rec { background:var(--accent); border-color:transparent; color:#fff; }
-    .ctrl-btn.stop { background:var(--surface); border-color:var(--accent); color:var(--accent); }
+    /* viewfinder portrait — fills width, 9:16 */
+    #vf {
+      position:relative; background:#000; overflow:hidden; flex-shrink:0;
+      width:100%;
+    }
+    /* portrait: 9:16 via padding trick */
+    @media (orientation:portrait) {
+      #vf { padding-bottom:177.78%; /* 16/9 */ }
+      #vf video, #vf #ph { position:absolute; inset:0; width:100%; height:100%; }
+    }
 
-    .panel { background:var(--surface); border:1px solid var(--border); border-radius:14px; overflow:hidden; }
-    .panel-header { padding:10px 14px; border-bottom:1px solid var(--border); display:flex; align-items:center; justify-content:space-between; }
-    .panel-label { font-family:var(--mono); font-size:10px; font-weight:500; color:var(--muted); letter-spacing:0.08em; text-transform:uppercase; }
-    .panel-body { padding:12px 14px; }
+    #vf video { object-fit:cover; display:block; }
+    #ph {
+      display:flex; flex-direction:column; align-items:center; justify-content:center;
+      gap:10px; pointer-events:none;
+    }
+    .ph-ring {
+      width:56px; height:56px; border-radius:50%;
+      border:1px solid var(--border2); background:var(--surface2);
+      display:flex; align-items:center; justify-content:center; font-size:24px;
+    }
+    .ph-lbl { font-family:var(--mono); font-size:11px; color:var(--muted); text-align:center; line-height:1.6; }
+    #rbadge {
+      position:absolute; top:12px; left:12px; display:none;
+      align-items:center; gap:5px;
+      background:rgba(0,0,0,.65); backdrop-filter:blur(8px);
+      padding:4px 10px 4px 7px; border-radius:100px;
+      font-family:var(--mono); font-size:11px; color:#fff;
+    }
+    #rbadge .rd { width:7px; height:7px; border-radius:50%; background:var(--accent); animation:blink 1s infinite; }
+    #fmtbadge {
+      position:absolute; top:12px; right:12px;
+      background:rgba(0,0,0,.55); backdrop-filter:blur(8px);
+      font-family:var(--mono); font-size:10px; color:var(--muted);
+      padding:3px 9px; border-radius:100px;
+    }
 
-    #toast { font-family:var(--mono); font-size:12px; padding:10px 14px; border-radius:10px; line-height:1.5; display:none; }
-    #toast.show { display:block; }
-    #toast.success { background:rgba(46,204,113,0.12); color:var(--green); border:1px solid rgba(46,204,113,0.2); }
-    #toast.error   { background:rgba(255,59,59,0.1);   color:#ff7070;   border:1px solid rgba(255,59,59,0.2); }
-    #toast.info    { background:rgba(59,130,246,0.1);  color:#7ab3ff;   border:1px solid rgba(59,130,246,0.2); }
+    /* portrait scroll area */
+    #port-scroll { flex:1; overflow-y:auto; padding:12px; display:flex; flex-direction:column; gap:10px; }
 
-    .field-label { font-family:var(--mono); font-size:10px; color:var(--muted); margin-bottom:5px; letter-spacing:0.06em; text-transform:uppercase; }
-    .field-wrap { margin-bottom:10px; }
-    .field-wrap:last-child { margin-bottom:0; }
-    input[type=text] { width:100%; padding:9px 12px; font-size:13px; font-family:var(--mono); border:1px solid var(--border2); border-radius:8px; background:var(--surface2); color:var(--text); -webkit-appearance:none; transition:border-color 0.2s; }
+    /* footer controls — portrait */
+    #port-footer {
+      display:flex; gap:8px; padding:10px 12px 12px;
+      border-top:1px solid var(--border); flex-shrink:0;
+    }
+
+    /* ═══════════════════════════════════════
+       LANDSCAPE  — side by side
+       Left: video  Right: panel
+    ═══════════════════════════════════════ */
+    @media (orientation:landscape) {
+      #port-body { flex-direction:row; }
+
+      /* video takes full height, width = height * 9/16 */
+      #vf {
+        padding-bottom:0 !important;
+        height:100%;
+        width:calc(100% * 9/16);
+        /* clamp so it never takes more than 60% of width */
+        max-width:60vw;
+        flex-shrink:0;
+        border-radius:0;
+      }
+      #vf video, #vf #ph { position:absolute; inset:0; width:100%; height:100%; }
+
+      #port-scroll { padding:10px 12px; }
+
+      #port-footer {
+        /* in landscape, footer moves into right column — handled below */
+        display:none;
+      }
+      #land-controls {
+        display:flex; gap:8px; padding:10px 12px;
+        border-bottom:1px solid var(--border); flex-shrink:0;
+      }
+      #right-col {
+        display:flex; flex-direction:column; flex:1; overflow:hidden;
+        border-left:1px solid var(--border);
+      }
+    }
+    /* hide landscape controls in portrait */
+    @media (orientation:portrait) {
+      #land-controls { display:none; }
+      #right-col { display:contents; } /* children flow normally in portrait */
+    }
+
+    /* ── shared button styles ── */
+    .cbtn {
+      flex:1; padding:12px 8px; border-radius:10px;
+      border:1px solid var(--border2); background:var(--surface);
+      color:var(--text); font-family:var(--ui); font-size:13px; font-weight:700;
+      cursor:pointer; display:flex; align-items:center; justify-content:center; gap:6px;
+      transition:all .15s;
+    }
+    .cbtn:active { transform:scale(.97); }
+    .cbtn:disabled { opacity:.3; pointer-events:none; }
+    .cbtn.rec { background:var(--accent); border-color:transparent; color:#fff; }
+    .cbtn.stop { border-color:var(--accent); color:var(--accent); }
+
+    /* ── panels ── */
+    .panel { background:var(--surface); border:1px solid var(--border); border-radius:12px; overflow:hidden; }
+    .ph2 { padding:9px 13px; border-bottom:1px solid var(--border); display:flex; align-items:center; justify-content:space-between; }
+    .plbl { font-family:var(--mono); font-size:10px; font-weight:500; color:var(--muted); letter-spacing:.07em; text-transform:uppercase; }
+    .pbody { padding:11px 13px; }
+
+    /* toast */
+    #toast { font-family:var(--mono); font-size:11px; padding:9px 13px; border-radius:9px; line-height:1.5; display:none; }
+    #toast.on { display:block; }
+    #toast.s { background:rgba(46,204,113,.1); color:var(--green); border:1px solid rgba(46,204,113,.2); }
+    #toast.e { background:rgba(255,59,59,.1); color:#ff6b6b; border:1px solid rgba(255,59,59,.2); }
+    #toast.i { background:rgba(59,130,246,.1); color:#7ab3ff; border:1px solid rgba(59,130,246,.2); }
+
+    /* fields */
+    .fl { font-family:var(--mono); font-size:10px; color:var(--muted); margin-bottom:4px; letter-spacing:.05em; text-transform:uppercase; }
+    .fw { margin-bottom:10px; }
+    .fw:last-child { margin-bottom:0; }
+    input[type=text] {
+      width:100%; padding:8px 11px; font-size:13px; font-family:var(--mono);
+      border:1px solid var(--border2); border-radius:8px;
+      background:var(--surface2); color:var(--text); -webkit-appearance:none;
+    }
     input[type=text]:focus { outline:none; border-color:var(--blue); }
 
-    /* subfolder dropdown */
-    .sf-select-wrap { position:relative; }
-    .sf-select {
-      width:100%; padding:9px 32px 9px 12px; font-size:13px; font-family:var(--mono);
+    /* dropdown */
+    .selwrap { position:relative; }
+    select.sfdrop {
+      width:100%; padding:8px 30px 8px 11px; font-size:13px; font-family:var(--mono);
       border:1px solid var(--border2); border-radius:8px;
       background:var(--surface2); color:var(--text);
       -webkit-appearance:none; appearance:none; cursor:pointer;
-      transition:border-color 0.2s;
     }
-    .sf-select:focus { outline:none; border-color:var(--blue); }
-    .sf-select:disabled { opacity:0.4; cursor:not-allowed; }
-    .sf-arrow { position:absolute; right:10px; top:50%; transform:translateY(-50%); pointer-events:none; color:var(--muted); font-size:11px; }
-    .sf-loading { font-family:var(--mono); font-size:11px; color:var(--muted); padding:10px 0; text-align:center; }
-    .sf-hint { font-family:var(--mono); font-size:10px; color:var(--muted); margin-top:6px; line-height:1.5; }
+    select.sfdrop:disabled { opacity:.4; }
+    select.sfdrop:focus { outline:none; border-color:var(--blue); }
+    .selarrow { position:absolute; right:9px; top:50%; transform:translateY(-50%); pointer-events:none; color:var(--muted); font-size:10px; }
+    .sfhint { font-family:var(--mono); font-size:10px; color:var(--muted); margin-top:5px; line-height:1.5; }
 
     /* recordings */
-    .rec-item { padding:12px 14px; border-bottom:1px solid var(--border); display:flex; flex-direction:column; gap:8px; }
-    .rec-item:last-child { border-bottom:none; }
-    .rec-item-top { display:flex; align-items:center; gap:10px; }
-    .rec-thumb { width:44px; height:44px; border-radius:8px; background:var(--surface2); border:1px solid var(--border2); flex-shrink:0; display:flex; align-items:center; justify-content:center; font-size:18px; }
-    .rec-meta-wrap { flex:1; min-width:0; }
-    .rec-name { font-size:13px; font-weight:600; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
-    .rec-sub { font-family:var(--mono); font-size:10px; color:var(--muted); margin-top:2px; }
-    .rec-btns { display:flex; gap:6px; }
-    .r-btn { flex:1; padding:8px 4px; border-radius:8px; font-size:11px; font-weight:700; font-family:var(--display); border:1px solid var(--border2); background:var(--surface2); color:var(--muted); cursor:pointer; text-align:center; text-decoration:none; display:flex; align-items:center; justify-content:center; gap:3px; transition:all 0.15s; }
-    .r-btn:active { transform:scale(0.96); }
-    .r-btn.up { background:var(--blue); border-color:transparent; color:#fff; }
-    .r-btn.done { background:rgba(46,204,113,0.15); border-color:rgba(46,204,113,0.3); color:var(--green); }
-    .rename-row { display:flex; gap:6px; }
-    .rename-row input { flex:1; margin:0; padding:7px 10px; font-size:12px; }
-    .rn-save { padding:7px 12px; border-radius:8px; border:none; background:var(--blue); color:#fff; font-size:12px; font-weight:700; font-family:var(--display); cursor:pointer; }
-    .rn-cancel { padding:7px 10px; border-radius:8px; border:1px solid var(--border2); background:transparent; color:var(--muted); font-size:12px; cursor:pointer; }
-    .empty-state { font-family:var(--mono); font-size:11px; color:var(--muted); padding:20px 14px; text-align:center; line-height:1.8; }
+    .ri { padding:11px 13px; border-bottom:1px solid var(--border); display:flex; flex-direction:column; gap:7px; }
+    .ri:last-child { border-bottom:none; }
+    .ri-top { display:flex; align-items:center; gap:9px; }
+    .ri-thumb { width:40px; height:40px; border-radius:8px; background:var(--surface2); border:1px solid var(--border2); flex-shrink:0; display:flex; align-items:center; justify-content:center; font-size:16px; }
+    .ri-info { flex:1; min-width:0; }
+    .ri-name { font-size:13px; font-weight:700; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+    .ri-sub { font-family:var(--mono); font-size:10px; color:var(--muted); margin-top:1px; }
+    .ri-btns { display:flex; gap:5px; }
+    .rb {
+      flex:1; padding:7px 3px; border-radius:7px; font-size:11px; font-weight:700;
+      font-family:var(--ui); border:1px solid var(--border2); background:var(--surface2);
+      color:var(--muted); cursor:pointer; text-align:center; text-decoration:none;
+      display:flex; align-items:center; justify-content:center; gap:3px; transition:all .15s;
+    }
+    .rb:active { transform:scale(.96); }
+    .rb.up { background:var(--blue); border-color:transparent; color:#fff; }
+    .rb.done { background:rgba(46,204,113,.12); border-color:rgba(46,204,113,.25); color:var(--green); }
+    .rn-row { display:flex; gap:5px; }
+    .rn-row input { flex:1; margin:0; padding:7px 9px; font-size:12px; }
+    .rn-ok { padding:7px 11px; border-radius:7px; border:none; background:var(--blue); color:#fff; font-size:12px; font-weight:700; font-family:var(--ui); cursor:pointer; }
+    .rn-x  { padding:7px 9px; border-radius:7px; border:1px solid var(--border2); background:transparent; color:var(--muted); font-size:12px; cursor:pointer; }
+    .empty { font-family:var(--mono); font-size:11px; color:var(--muted); padding:18px 13px; text-align:center; line-height:1.8; }
   </style>
 </head>
 <body>
-<div id="shell">
-  <div id="header">
-    <div class="logo">cap<span>.</span>ture</div>
-    <div class="header-right">
-      <div id="status-dot"></div>
-      <button id="signin-pill" onclick="signIn()">sign in to google</button>
+<div id="app">
+  <!-- HEADER -->
+  <div id="hdr">
+    <div class="logo">cap<em>.</em>ture</div>
+    <div id="hdr-right">
+      <div id="sdot"></div>
+      <button id="gpill" onclick="signIn()">sign in to google</button>
     </div>
   </div>
 
-  <div id="main">
-    <div id="viewfinder-wrap">
-      <video id="preview" autoplay muted playsinline></video>
-      <div id="placeholder">
-        <div class="ph-icon">📷</div>
-        <div class="ph-text">tap start camera<br>to begin</div>
+  <!-- BODY (portrait: column / landscape: row) -->
+  <div id="port-body">
+
+    <!-- VIEWFINDER -->
+    <div id="vf">
+      <video id="cam" autoplay muted playsinline></video>
+      <div id="ph">
+        <div class="ph-ring">📷</div>
+        <div class="ph-lbl">tap start camera<br>to begin</div>
       </div>
-      <div id="rec-badge"><div class="dot"></div><span id="rec-timer">0:00</span><span style="color:var(--muted);margin-left:2px">REC</span></div>
-      <div id="format-badge">MP4 · 16:9</div>
+      <div id="rbadge"><div class="rd"></div><span id="rtimer">0:00</span><span style="color:var(--muted);margin-left:3px">REC</span></div>
+      <div id="fmtbadge">16:9</div>
     </div>
 
-    <div id="sidebar">
-      <div id="toast"></div>
+    <!-- RIGHT COLUMN (landscape) / inline (portrait) -->
+    <div id="right-col">
 
-      <div class="panel">
-        <div class="panel-header"><span class="panel-label">Google Drive</span></div>
-        <div class="panel-body">
-          <div class="field-wrap">
-            <div class="field-label">Client ID</div>
-            <input type="text" id="client-id" placeholder="paste your client id" oninput="saveSettings()" />
-          </div>
-          <div class="field-wrap">
-            <div class="field-label">Subfolder in Entrevues</div>
-            <div class="sf-select-wrap">
-              <select class="sf-select" id="subfolder-select" onchange="onSubfolderChange()" disabled>
-                <option value="">sign in to load folders</option>
-              </select>
-              <span class="sf-arrow">▼</span>
+      <!-- landscape-only controls row -->
+      <div id="land-controls">
+        <button class="cbtn" id="lbtn-cam" onclick="startCamera()">📷 Camera</button>
+        <button class="cbtn rec" id="lbtn-rec" onclick="toggleRecord()" disabled>⏺ Record</button>
+      </div>
+
+      <!-- scrollable content -->
+      <div id="port-scroll">
+        <div id="toast"></div>
+
+        <!-- Drive panel -->
+        <div class="panel">
+          <div class="ph2"><span class="plbl">Google Drive</span></div>
+          <div class="pbody">
+            <div class="fw">
+              <div class="fl">Client ID</div>
+              <input type="text" id="client-id" placeholder="paste your client id" oninput="saveSettings()"/>
             </div>
-            <div class="sf-hint" id="sf-hint">videos upload to the selected subfolder inside "Entrevues"</div>
+            <div class="fw">
+              <div class="fl">Subfolder in Entrevues</div>
+              <div class="selwrap">
+                <select class="sfdrop" id="sfdrop" onchange="onFolderChange()" disabled>
+                  <option value="">sign in to load folders</option>
+                </select>
+                <span class="selarrow">▼</span>
+              </div>
+              <div class="sfhint" id="sfhint">sign in first, then choose a subfolder</div>
+            </div>
           </div>
         </div>
-      </div>
 
-      <div class="panel">
-        <div class="panel-header">
-          <span class="panel-label">Recordings</span>
-          <span id="rec-count" style="font-family:var(--mono);font-size:10px;color:var(--muted)">0</span>
+        <!-- Recordings panel -->
+        <div class="panel">
+          <div class="ph2">
+            <span class="plbl">Recordings</span>
+            <span id="rcnt" style="font-family:var(--mono);font-size:10px;color:var(--muted)">0</span>
+          </div>
+          <div id="rlist"><div class="empty">no recordings yet.<br>press record to start.</div></div>
         </div>
-        <div id="rec-list"><div class="empty-state">no recordings yet.<br>press record to start.</div></div>
-      </div>
-    </div>
-  </div>
+      </div><!-- /port-scroll -->
 
-  <div id="footer">
-    <div id="controls">
-      <button class="ctrl-btn" id="btn-camera" onclick="startCamera()">📷 Start Camera</button>
-      <button class="ctrl-btn rec" id="btn-record" onclick="toggleRecord()" disabled>⏺ Record</button>
-    </div>
+    </div><!-- /right-col -->
+  </div><!-- /port-body -->
+
+  <!-- PORTRAIT footer controls -->
+  <div id="port-footer">
+    <button class="cbtn" id="pbtn-cam" onclick="startCamera()">📷 Start Camera</button>
+    <button class="cbtn rec" id="pbtn-rec" onclick="toggleRecord()" disabled>⏺ Record</button>
   </div>
-</div>
+</div><!-- /app -->
 
 <script>
-let stream=null, mediaRecorder=null, chunks=[], timerInterval=null;
-let seconds=0, recordings=[], isRecording=false, accessToken=null, tokenExpiry=0;
-let renamingIndex=null, gsiClient=null;
-let entrevuesFolderId=null, selectedFolderId=null, selectedFolderName=null;
+'use strict';
+let stream=null, mr=null, chunks=[], timerInt=null;
+let secs=0, recs=[], recording=false, token=null, tokenExp=0;
+let renameIdx=null, gsi=null;
+let entId=null, selFolderId=null, selFolderName=null;
+const FOLDER='Entrevues';
 
-const TARGET_FOLDER_NAME = 'Entrevues';
+/* ─── persist ─── */
+function saveSetting(){ localStorage.setItem('vr_cid',document.getElementById('client-id').value); if(selFolderId)localStorage.setItem('vr_fid',selFolderId); if(selFolderName)localStorage.setItem('vr_fn',selFolderName); }
+function loadSetting(){ const c=localStorage.getItem('vr_cid'),f=localStorage.getItem('vr_fid'),n=localStorage.getItem('vr_fn'); if(c)document.getElementById('client-id').value=c; if(f)selFolderId=f; if(n)selFolderName=n; }
+function saveToken(t,exp){ const e=Date.now()+((exp||3600)-60)*1000; localStorage.setItem('vr_tok',t); localStorage.setItem('vr_exp',String(e)); token=t; tokenExp=e; }
+function loadToken(){ const t=localStorage.getItem('vr_tok'),e=parseInt(localStorage.getItem('vr_exp')||'0'); if(t&&e&&Date.now()<e){token=t;tokenExp=e;return true;} return false; }
+function clearToken(){ localStorage.removeItem('vr_tok');localStorage.removeItem('vr_exp');token=null;tokenExp=0; }
+function tokenOk(){ return !!(token&&Date.now()<tokenExp); }
 
-/* ── layout ── */
-function syncControls() {
-  const isLand = window.matchMedia('(orientation:landscape)').matches;
-  const footer=document.getElementById('footer'), sidebar=document.getElementById('sidebar'), controls=document.getElementById('controls');
-  if (isLand) { if (!sidebar.contains(controls)) sidebar.insertBefore(controls, sidebar.firstChild); }
-  else { if (!footer.contains(controls)) footer.appendChild(controls); }
-}
-window.addEventListener('resize', syncControls);
-window.addEventListener('orientationchange', ()=>setTimeout(syncControls,100));
+/* ─── toast ─── */
+function toast(msg,t='i'){ const el=document.getElementById('toast'); el.innerHTML=msg; el.className='on '+t; clearTimeout(el._x); el._x=setTimeout(()=>el.className='',5000); }
 
-/* ── storage ── */
-function saveSettings() {
-  localStorage.setItem('vr_client_id', document.getElementById('client-id').value);
-  if (selectedFolderId)   localStorage.setItem('vr_sel_folder_id',   selectedFolderId);
-  if (selectedFolderName) localStorage.setItem('vr_sel_folder_name', selectedFolderName);
-}
-function loadSettings() {
-  const cid=localStorage.getItem('vr_client_id');
-  const fid=localStorage.getItem('vr_sel_folder_id');
-  const fn =localStorage.getItem('vr_sel_folder_name');
-  if (cid) document.getElementById('client-id').value=cid;
-  if (fid) selectedFolderId=fid;
-  if (fn)  selectedFolderName=fn;
-}
-function saveToken(token, expiresIn) {
-  const expiry=Date.now()+((expiresIn||3600)-60)*1000;
-  localStorage.setItem('vr_token', token);
-  localStorage.setItem('vr_expiry', String(expiry));
-  accessToken=token; tokenExpiry=expiry;
-}
-function loadToken() {
-  const t=localStorage.getItem('vr_token'), e=parseInt(localStorage.getItem('vr_expiry')||'0');
-  if (t&&e&&Date.now()<e) { accessToken=t; tokenExpiry=e; return true; }
-  return false;
-}
-function clearToken() { localStorage.removeItem('vr_token'); localStorage.removeItem('vr_expiry'); accessToken=null; tokenExpiry=0; }
-function isTokenValid() { return !!(accessToken && Date.now()<tokenExpiry); }
+/* ─── dot ─── */
+function dot(s){ document.getElementById('sdot').className=s; }
 
-/* ── toast ── */
-function toast(msg, type='info') {
-  const el=document.getElementById('toast');
-  el.innerHTML=msg; el.className='show '+type;
-  clearTimeout(el._t); el._t=setTimeout(()=>{el.className='';},5000);
-}
-
-/* ── dot ── */
-function setDot(s) { document.getElementById('status-dot').className=s; }
-
-/* ── camera ── */
-async function startCamera() {
-  try {
-    stream = await navigator.mediaDevices.getUserMedia({
-      video: { facingMode:'environment', width:{ideal:1920}, height:{ideal:1080}, aspectRatio:{ideal:16/9} },
-      audio: { echoCancellation:true, noiseSuppression:true, sampleRate:44100 }
+/* ─── camera ─── */
+async function startCamera(){
+  try{
+    stream=await navigator.mediaDevices.getUserMedia({
+      video:{facingMode:'environment',width:{ideal:1920},height:{ideal:1080},aspectRatio:{ideal:16/9}},
+      audio:{echoCancellation:true,noiseSuppression:true,sampleRate:44100}
     });
-    const vid=document.getElementById('preview');
-    vid.srcObject=stream; vid.style.display='block';
-    document.getElementById('placeholder').style.display='none';
-    document.getElementById('btn-camera').disabled=true;
-    document.getElementById('btn-record').disabled=false;
-    localStorage.setItem('vr_cam_allowed','1');
-    toast('camera ready — press record to start.','info');
-  } catch(e) {
-    toast('camera access denied. allow camera & mic in browser settings.','error');
+    const v=document.getElementById('cam');
+    v.srcObject=stream; v.style.display='block';
+    document.getElementById('ph').style.display='none';
+    setBtn(false,true);
+    localStorage.setItem('vr_cam','1');
+    toast('camera ready — press record','i');
+  }catch(e){
+    toast('camera denied — allow in browser settings','e');
   }
 }
 
-/* ── recording — prioritise AAC audio for iPhone compatibility ── */
-function toggleRecord() { isRecording ? stopRecording() : startRecording(); }
-
-function getBestMime() {
-  // Prefer formats that produce AAC audio (playable on all devices)
-  const types = [
-    'video/mp4;codecs=avc1.42E01E,mp4a.40.2',  // H.264 + AAC — best
-    'video/mp4;codecs=avc1,mp4a.40.2',
-    'video/mp4',
-    'video/webm;codecs=h264,opus',
-    'video/webm;codecs=vp9,opus',
-    'video/webm;codecs=vp8,opus',
-    'video/webm'
-  ];
-  return types.find(t => { try { return MediaRecorder.isTypeSupported(t); } catch(e){ return false; } }) || '';
+/* set both portrait + landscape buttons */
+function setBtn(camDisabled,recEnabled){
+  ['pbtn-cam','lbtn-cam'].forEach(id=>{ const el=document.getElementById(id); if(el)el.disabled=camDisabled; });
+  ['pbtn-rec','lbtn-rec'].forEach(id=>{ const el=document.getElementById(id); if(el)el.disabled=!recEnabled; });
+}
+function setBtnLabel(label,cls){
+  ['pbtn-rec','lbtn-rec'].forEach(id=>{ const el=document.getElementById(id); if(el){el.textContent=label;el.className='cbtn '+cls;} });
 }
 
-function startRecording() {
+/* ─── recording ─── */
+function toggleRecord(){ recording?stopRec():startRec(); }
+
+function getBestMime(){
+  const list=['video/mp4;codecs=avc1.42E01E,mp4a.40.2','video/mp4;codecs=avc1,mp4a.40.2','video/mp4','video/webm;codecs=h264,opus','video/webm;codecs=vp9,opus','video/webm'];
+  return list.find(m=>{ try{return MediaRecorder.isTypeSupported(m);}catch(e){return false;} })||'';
+}
+
+function startRec(){
   chunks=[];
   const mime=getBestMime();
-  try { mediaRecorder=new MediaRecorder(stream, mime?{mimeType:mime}:{}); }
-  catch(e) { mediaRecorder=new MediaRecorder(stream); }
-
-  // Update format badge based on actual mime
-  const actualMime = mediaRecorder.mimeType || mime;
-  const isMP4 = actualMime.includes('mp4');
-  const hasAAC = actualMime.includes('mp4a') || actualMime.includes('mp4');
-  document.getElementById('format-badge').textContent = isMP4 ? 'MP4 · AAC audio' : 'WebM · Opus audio';
-
-  mediaRecorder.ondataavailable = e => { if (e.data&&e.data.size>0) chunks.push(e.data); };
-  mediaRecorder.onstop = saveRecording;
-  mediaRecorder.onerror = e => toast('recorder error: '+(e.error?.message||'unknown'),'error');
-  mediaRecorder.start(1000);
-  isRecording=true; seconds=0;
-  document.getElementById('rec-badge').style.display='flex';
-  document.getElementById('btn-record').textContent='⏹ Stop';
-  document.getElementById('btn-record').className='ctrl-btn stop';
-  setDot('red');
-  timerInterval=setInterval(()=>{
-    seconds++;
-    const m=Math.floor(seconds/60), s=seconds%60;
-    document.getElementById('rec-timer').textContent=`${m}:${s.toString().padStart(2,'0')}`;
-  },1000);
+  try{ mr=new MediaRecorder(stream,mime?{mimeType:mime}:{}); }catch(e){ mr=new MediaRecorder(stream); }
+  // capture mimeType right after construction (iOS may clear it later)
+  const capturedMime = mr.mimeType || mime || 'video/mp4';
+  mr.ondataavailable=e=>{ if(e.data&&e.data.size>0)chunks.push(e.data); };
+  mr.onstop=()=>saveRec(capturedMime);
+  mr.onerror=e=>toast('recorder error: '+(e.error?.message||'?'),'e');
+  mr.start(500);
+  recording=true; secs=0;
+  document.getElementById('rbadge').style.display='flex';
+  document.getElementById('fmtbadge').textContent=capturedMime.includes('mp4')?'MP4 · 16:9':'WebM · 16:9';
+  setBtnLabel('⏹ Stop','cbtn stop');
+  dot('r');
+  timerInt=setInterval(()=>{ secs++; const m=Math.floor(secs/60),s=secs%60; document.getElementById('rtimer').textContent=`${m}:${s.toString().padStart(2,'0')}`; },1000);
 }
 
-function stopRecording() {
-  if (mediaRecorder&&mediaRecorder.state!=='inactive') mediaRecorder.stop();
-  isRecording=false; clearInterval(timerInterval);
-  document.getElementById('rec-badge').style.display='none';
-  document.getElementById('btn-record').innerHTML='⏺ Record';
-  document.getElementById('btn-record').className='ctrl-btn rec';
-  setDot('green');
+function stopRec(){
+  if(mr&&mr.state!=='inactive')mr.stop();
+  recording=false; clearInterval(timerInt);
+  document.getElementById('rbadge').style.display='none';
+  setBtnLabel('⏺ Record','cbtn rec');
+  dot('g');
 }
 
-function saveRecording() {
-  if (!chunks.length) { toast('no video data captured.','error'); return; }
-  const usedMime=(mediaRecorder&&mediaRecorder.mimeType)||chunks[0]?.type||'video/webm';
+function saveRec(mime){
+  if(!chunks.length){ toast('no data captured — try again','e'); return; }
+  // use passed mime; fallback chain for iOS where mimeType can be ''
+  const usedMime = mime || 'video/mp4';
   const ext=usedMime.includes('mp4')?'mp4':'webm';
-  const blob=new Blob(chunks,{type:usedMime});
-  if (blob.size===0) { toast('video was empty — try again.','error'); return; }
-  const name=`capture_${new Date().toISOString().replace(/[:.]/g,'-').slice(0,19)}`;
-  const size=(blob.size/(1024*1024)).toFixed(1)+' MB';
+  let blob;
+  try{ blob=new Blob(chunks,{type:usedMime}); }catch(e){ blob=new Blob(chunks); }
+  if(!blob||blob.size===0){ toast('video was empty — try again','e'); return; }
+  const name='capture_'+new Date().toISOString().replace(/[:.]/g,'-').slice(0,19);
+  const size=(blob.size/1048576).toFixed(1)+' MB';
   const url=URL.createObjectURL(blob);
-
-  // Note about audio format
-  const audioNote = usedMime.includes('mp4') ? '' : ' (opus audio — use VLC if no sound on iPhone)';
-  recordings.unshift({name,ext,blob,size,url,uploaded:false,audioNote});
-  renderRecordings();
-  toast(`✓ saved ${name}.${ext} (${size})${audioNote} — tap upload to send to drive.`,'success');
+  recs.unshift({name,ext,blob,size,url,uploaded:false});
+  renderRecs();
+  toast(`✓ saved ${name}.${ext} (${size}) — tap upload`,'s');
 }
 
-/* ── find Entrevues folder then load its subfolders ── */
-async function loadEntrevuesFolders() {
-  const sel = document.getElementById('subfolder-select');
-  sel.disabled = true;
-  sel.innerHTML = '<option value="">finding Entrevues folder…</option>';
-  try {
-    const q = `name='${TARGET_FOLDER_NAME}' and mimeType='application/vnd.google-apps.folder' and trashed=false`;
-    const res = await fetch(
-      `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(q)}&includeItemsFromAllDrives=true&supportsAllDrives=true&corpora=allDrives&fields=files(id,name,parents)`,
-      {headers:{Authorization:`Bearer ${accessToken}`}}
-    );
-    const data = await res.json();
-    if (!data.files || !data.files.length) {
-      sel.innerHTML = '<option value="">⚠ Entrevues folder not found</option>';
-      document.getElementById('sf-hint').textContent = 'make sure the folder is shared with your google account.';
-      return;
-    }
-    entrevuesFolderId = data.files[0].id;
-    await loadSubfolders(entrevuesFolderId);
-  } catch(e) {
-    sel.innerHTML = `<option value="">error: ${e.message}</option>`;
-  }
-}
-
-async function loadSubfolders(parentId) {
-  const sel = document.getElementById('subfolder-select');
-  sel.innerHTML = '<option value="">loading subfolders…</option>';
-  try {
-    const q = `'${parentId}' in parents and mimeType='application/vnd.google-apps.folder' and trashed=false`;
-    const res = await fetch(
-      `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(q)}&includeItemsFromAllDrives=true&supportsAllDrives=true&orderBy=name&fields=files(id,name)&pageSize=50`,
-      {headers:{Authorization:`Bearer ${accessToken}`}}
-    );
-    const data = await res.json();
-    const folders = data.files || [];
-    const allOptions = [{id: parentId, name: '📁 Entrevues (root)'}, ...folders.map(f => ({id: f.id, name: '📁 ' + f.name}))];
-
-    sel.innerHTML = allOptions.map(f =>
-      `<option value="${f.id}" ${selectedFolderId===f.id?'selected':''}>${f.name}</option>`
-    ).join('');
-    sel.disabled = false;
-
-    // Auto-select saved folder or first option
-    if (selectedFolderId && allOptions.find(f => f.id === selectedFolderId)) {
-      sel.value = selectedFolderId;
-    } else {
-      sel.value = allOptions[0].id;
-      selectedFolderId = allOptions[0].id;
-      selectedFolderName = allOptions[0].name;
-      saveSettings();
-    }
-
-    document.getElementById('sf-hint').textContent =
-      folders.length
-        ? `${folders.length} subfolder${folders.length !== 1 ? 's' : ''} found inside Entrevues`
-        : 'no subfolders — videos will go into Entrevues directly';
-  } catch(e) {
-    sel.innerHTML = `<option value="">error: ${e.message}</option>`;
-  }
-}
-
-function onSubfolderChange() {
-  const sel = document.getElementById('subfolder-select');
-  selectedFolderId = sel.value;
-  selectedFolderName = sel.options[sel.selectedIndex]?.text || '';
-  saveSettings();
-}
-
-/* ── render recordings ── */
-function renderRecordings() {
-  document.getElementById('rec-count').textContent=recordings.length;
-  const list=document.getElementById('rec-list');
-  if (!recordings.length) { list.innerHTML='<div class="empty-state">no recordings yet.<br>press record to start.</div>'; return; }
-  list.innerHTML=recordings.map((r,i)=>{
-    const isRen=renamingIndex===i;
-    return `<div class="rec-item" id="rec-${i}">
-      <div class="rec-item-top">
-        <div class="rec-thumb">🎬</div>
-        <div class="rec-meta-wrap">
-          <div class="rec-name">${r.name}.${r.ext}</div>
-          <div class="rec-sub">${r.size} · ${r.ext.toUpperCase()}${r.audioNote?` · ⚠ opus audio`:''}</div>
+/* ─── render recordings ─── */
+function renderRecs(){
+  document.getElementById('rcnt').textContent=recs.length;
+  const list=document.getElementById('rlist');
+  if(!recs.length){ list.innerHTML='<div class="empty">no recordings yet.<br>press record to start.</div>'; return; }
+  list.innerHTML=recs.map((r,i)=>{
+    const ren=renameIdx===i;
+    return `<div class="ri" id="ri-${i}">
+      <div class="ri-top">
+        <div class="ri-thumb">🎬</div>
+        <div class="ri-info">
+          <div class="ri-name">${r.name}.${r.ext}</div>
+          <div class="ri-sub">${r.size} · ${r.ext.toUpperCase()}</div>
         </div>
       </div>
-      ${isRen?`<div class="rename-row">
-        <input type="text" id="rni-${i}" value="${r.name}" />
-        <button class="rn-save" onclick="saveRename(${i})">save</button>
-        <button class="rn-cancel" onclick="cancelRename()">✕</button>
-      </div>`:''}
-      <div class="rec-btns">
-        <a class="r-btn" href="${r.url}" download="${r.name}.${r.ext}">⬇ save</a>
-        <button class="r-btn" onclick="startRename(${i})">✏ rename</button>
-        <button class="r-btn ${r.uploaded?'done':'up'}" onclick="uploadToDrive(${i})" ${r.uploaded?'disabled':''}>
+      ${ren?`<div class="rn-row"><input type="text" id="rni-${i}" value="${r.name}"><button class="rn-ok" onclick="saveRename(${i})">save</button><button class="rn-x" onclick="cancelRename()">✕</button></div>`:''}
+      <div class="ri-btns">
+        <a class="rb" href="${r.url}" download="${r.name}.${r.ext}">⬇ save</a>
+        <button class="rb" onclick="startRename(${i})">✏ rename</button>
+        <button class="rb ${r.uploaded?'done':'up'}" onclick="upload(${i})" ${r.uploaded?'disabled':''}>
           ${r.uploaded?'✓ done':'☁ upload'}
         </button>
       </div>
     </div>`;
   }).join('');
 }
+function startRename(i){ renameIdx=i; renderRecs(); setTimeout(()=>{ const el=document.getElementById(`rni-${i}`); if(el){el.focus();el.select();} },40); }
+function saveRename(i){ const el=document.getElementById(`rni-${i}`); if(el){const n=el.value.trim().replace(/[\/\\:*?"<>|]/g,'_');if(n)recs[i].name=n;} renameIdx=null; renderRecs(); }
+function cancelRename(){ renameIdx=null; renderRecs(); }
 
-function startRename(i){renamingIndex=i;renderRecordings();setTimeout(()=>{const el=document.getElementById(`rni-${i}`);if(el){el.focus();el.select();}},40);}
-function saveRename(i){const el=document.getElementById(`rni-${i}`);if(el){const n=el.value.trim().replace(/[\/\\:*?"<>|]/g,'_');if(n)recordings[i].name=n;}renamingIndex=null;renderRecordings();}
-function cancelRename(){renamingIndex=null;renderRecordings();}
+/* ─── Drive folders ─── */
+async function loadEntrevueFolders(){
+  const sel=document.getElementById('sfdrop');
+  sel.disabled=true; sel.innerHTML='<option>finding Entrevues…</option>';
+  try{
+    const q=`name='${FOLDER}' and mimeType='application/vnd.google-apps.folder' and trashed=false`;
+    const r=await fetch(`https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(q)}&includeItemsFromAllDrives=true&supportsAllDrives=true&corpora=allDrives&fields=files(id,name)`,{headers:{Authorization:`Bearer ${token}`}});
+    const d=await r.json();
+    if(!d.files?.length){ sel.innerHTML='<option>⚠ Entrevues not found</option>'; document.getElementById('sfhint').textContent='make sure it\'s shared with your google account.'; return; }
+    entId=d.files[0].id;
+    const q2=`'${entId}' in parents and mimeType='application/vnd.google-apps.folder' and trashed=false`;
+    const r2=await fetch(`https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(q2)}&includeItemsFromAllDrives=true&supportsAllDrives=true&orderBy=name&fields=files(id,name)&pageSize=50`,{headers:{Authorization:`Bearer ${token}`}});
+    const d2=await r2.json();
+    const subs=d2.files||[];
+    const opts=[{id:entId,name:'📁 Entrevues (root)'},...subs.map(f=>({id:f.id,name:'📁 '+f.name}))];
+    sel.innerHTML=opts.map(o=>`<option value="${o.id}" ${selFolderId===o.id?'selected':''}>${o.name}</option>`).join('');
+    sel.disabled=false;
+    if(selFolderId&&opts.find(o=>o.id===selFolderId)){ sel.value=selFolderId; }
+    else{ selFolderId=opts[0].id; selFolderName=opts[0].name; sel.value=selFolderId; saveSetting(); }
+    document.getElementById('sfhint').textContent=subs.length?`${subs.length} subfolder${subs.length!==1?'s':''} in Entrevues`:'no subfolders — saving to Entrevues root';
+  }catch(e){ sel.innerHTML=`<option>error: ${e.message}</option>`; }
+}
+function onFolderChange(){ const s=document.getElementById('sfdrop'); selFolderId=s.value; selFolderName=s.options[s.selectedIndex]?.text||''; saveSetting(); }
 
-/* ── Google sign-in ── */
-function buildGsiClient(clientId) {
-  gsiClient=google.accounts.oauth2.initTokenClient({
-    client_id:clientId,
+/* ─── auth ─── */
+function buildGsi(cid){
+  gsi=google.accounts.oauth2.initTokenClient({
+    client_id:cid,
     scope:'https://www.googleapis.com/auth/drive.file https://www.googleapis.com/auth/drive.readonly',
-    callback:(resp)=>{
-      if (resp&&resp.access_token) {
-        saveToken(resp.access_token, resp.expires_in||3600);
-        markSignedIn();
-        toast('signed in — loading Entrevues folders…','success');
-        loadEntrevuesFolders();
-      } else {
-        toast('sign-in failed or was cancelled.','error');
-      }
+    callback:resp=>{
+      if(resp?.access_token){ saveToken(resp.access_token,resp.expires_in); markOn(); toast('signed in — loading folders…','s'); loadEntrevueFolders(); }
+      else toast('sign-in failed','e');
     },
-    error_callback:(err)=>{ toast('sign-in error: '+(err.message||JSON.stringify(err)),'error'); }
+    error_callback:err=>toast('auth error: '+(err.message||JSON.stringify(err)),'e')
   });
 }
-function markSignedIn() {
-  document.getElementById('signin-pill').textContent='✓ google connected';
-  document.getElementById('signin-pill').classList.add('active');
-  setDot('green');
-}
-function signIn() {
-  const clientId=document.getElementById('client-id').value.trim();
-  if (!clientId) { toast('paste your client id first.','error'); return; }
-  saveSettings();
-  buildGsiClient(clientId);
-  gsiClient.requestAccessToken();
-}
-function trySilentRefresh(clientId) {
-  if (!clientId) return;
-  try {
-    google.accounts.oauth2.initTokenClient({
-      client_id:clientId,
-      scope:'https://www.googleapis.com/auth/drive.file https://www.googleapis.com/auth/drive.readonly',
-      prompt:'',
-      callback:(resp)=>{ if(resp&&resp.access_token){saveToken(resp.access_token,resp.expires_in||3600);markSignedIn();loadEntrevuesFolders();} },
-      error_callback:()=>{}
-    }).requestAccessToken({prompt:''});
-  } catch(e){}
-}
+function markOn(){ document.getElementById('gpill').textContent='✓ connected'; document.getElementById('gpill').classList.add('on'); dot('g'); }
+function signIn(){ const c=document.getElementById('client-id').value.trim(); if(!c){toast('paste client id first','e');return;} saveSetting(); buildGsi(c); gsi.requestAccessToken(); }
+function silentRefresh(cid){ if(!cid)return; try{ google.accounts.oauth2.initTokenClient({client_id:cid,scope:'https://www.googleapis.com/auth/drive.file https://www.googleapis.com/auth/drive.readonly',prompt:'',callback:r=>{if(r?.access_token){saveToken(r.access_token,r.expires_in);markOn();loadEntrevueFolders();}},error_callback:()=>{}}).requestAccessToken({prompt:''}); }catch(e){} }
 
-/* ── upload ── */
-async function uploadToDrive(index) {
-  if (!isTokenValid()) { toast('session expired — tap sign in to google to refresh.','error'); return; }
-  if (!selectedFolderId) { toast('select a subfolder first.','error'); return; }
-  const rec=recordings[index];
-  if (!rec||!rec.blob||rec.blob.size===0) { toast('video file is empty — re-record.','error'); return; }
-  const fileName=`${rec.name}.${rec.ext}`;
-  toast(`uploading ${fileName}…`,'info');
-  try {
-    const metadata={name:fileName, parents:[selectedFolderId]};
+/* ─── upload ─── */
+async function upload(i){
+  if(!tokenOk()){toast('session expired — sign in again','e');return;}
+  if(!selFolderId){toast('choose a subfolder first','e');return;}
+  const rec=recs[i];
+  if(!rec?.blob||rec.blob.size===0){toast('video is empty','e');return;}
+  const fn=`${rec.name}.${rec.ext}`;
+  toast(`uploading ${fn}…`,'i');
+  try{
+    const meta={name:fn,parents:[selFolderId]};
     const form=new FormData();
-    form.append('metadata', new Blob([JSON.stringify(metadata)],{type:'application/json'}));
-    form.append('file', rec.blob, fileName);
-    const res=await fetch(
-      'https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id,name&supportsAllDrives=true',
-      {method:'POST', headers:{Authorization:`Bearer ${accessToken}`}, body:form}
-    );
-    if (res.ok) {
-      recordings[index].uploaded=true;
-      renderRecordings();
-      toast(`✓ uploaded "${fileName}" → ${selectedFolderName}`,'success');
-    } else {
-      const err=await res.json().catch(()=>({}));
-      if (err.error?.code===401) { clearToken(); toast('session expired — sign in again.','error'); }
-      else toast('upload failed: '+(err.error?.message||'status '+res.status),'error');
-    }
-  } catch(e) { toast('upload error: '+e.message,'error'); }
+    form.append('metadata',new Blob([JSON.stringify(meta)],{type:'application/json'}));
+    form.append('file',rec.blob,fn);
+    const res=await fetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id,name&supportsAllDrives=true',{method:'POST',headers:{Authorization:`Bearer ${token}`},body:form});
+    if(res.ok){ recs[i].uploaded=true; renderRecs(); toast(`✓ uploaded to ${selFolderName}`,'s'); }
+    else{ const e=await res.json().catch(()=>({})); if(e.error?.code===401){clearToken();toast('session expired','e');}else toast('upload failed: '+(e.error?.message||res.status),'e'); }
+  }catch(e){toast('error: '+e.message,'e');}
 }
 
-/* ── init ── */
+/* ─── init ─── */
 window.addEventListener('load',()=>{
-  loadSettings();
-  syncControls();
-  if (loadToken()) {
-    markSignedIn();
-    loadEntrevuesFolders();
-  }
-  const clientId=document.getElementById('client-id').value.trim();
-  if (localStorage.getItem('vr_cam_allowed')==='1') startCamera();
-  const waitGsi=setInterval(()=>{
-    if (typeof google!=='undefined'&&google.accounts) {
-      clearInterval(waitGsi);
-      if (clientId) { buildGsiClient(clientId); if (!isTokenValid()) trySilentRefresh(clientId); }
-    }
-  },300);
+  loadSetting();
+  if(loadToken()){ markOn(); loadEntrevueFolders(); }
+  const cid=document.getElementById('client-id').value.trim();
+  if(localStorage.getItem('vr_cam')==='1') startCamera();
+  const w=setInterval(()=>{ if(typeof google!=='undefined'&&google.accounts){ clearInterval(w); if(cid){buildGsi(cid);if(!tokenOk())silentRefresh(cid);} } },300);
 });
 </script>
 </body>
