@@ -1,0 +1,578 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Capture</title>
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="Capture" />
+  <script src="https://accounts.google.com/gsi/client" async defer></script>
+  <style>
+    :root {
+      --bg: #0a0a0a; --surface: #141414; --surface2: #1e1e1e;
+      --border: rgba(255,255,255,0.08); --border2: rgba(255,255,255,0.14);
+      --text: #f0f0f0; --muted: #888; --accent: #ff3b3b;
+      --green: #2ecc71; --blue: #3b82f6;
+      --mono: 'DM Mono', monospace; --display: 'Syne', sans-serif;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+    html, body { height: 100%; background: var(--bg); color: var(--text); font-family: var(--display); overflow-x: hidden; }
+    @import url('https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Syne:wght@400;600;700;800&display=swap');
+
+    #shell { display: grid; grid-template-columns: 1fr; grid-template-rows: auto 1fr auto; min-height: 100dvh; }
+
+    #header {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 14px 20px 10px; border-bottom: 1px solid var(--border);
+    }
+    .logo { font-size: 22px; font-weight: 800; letter-spacing: -0.5px; }
+    .logo span { color: var(--accent); }
+    .header-right { display: flex; align-items: center; gap: 10px; }
+    #signin-pill {
+      font-family: var(--mono); font-size: 11px; padding: 6px 14px; border-radius: 100px;
+      border: 1px solid var(--border2); background: var(--surface);
+      color: var(--muted); cursor: pointer; transition: all 0.2s;
+    }
+    #signin-pill.active { border-color: var(--green); color: var(--green); background: rgba(46,204,113,0.08); }
+    #status-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--muted); flex-shrink: 0; transition: background 0.3s; }
+    #status-dot.green { background: var(--green); box-shadow: 0 0 8px var(--green); }
+    #status-dot.red { background: var(--accent); box-shadow: 0 0 8px var(--accent); animation: pdot 1s infinite; }
+    @keyframes pdot { 0%,100%{opacity:1}50%{opacity:0.3} }
+
+    #main { display: flex; flex-direction: column; overflow-y: auto; }
+
+    @media (orientation: portrait) {
+      #main { padding: 16px; gap: 16px; }
+      #viewfinder-wrap { width: 100%; aspect-ratio: 9/16; }
+    }
+    @media (orientation: landscape) {
+      #shell { grid-template-rows: auto 1fr; }
+      #main { flex-direction: row; align-items: stretch; padding: 0; overflow: hidden; height: calc(100dvh - 53px); }
+      #viewfinder-wrap { flex: 0 0 auto; width: calc((100dvh - 53px) * 9/16); max-width: 55vw; height: 100%; border-radius: 0; aspect-ratio: unset; }
+      #sidebar { flex: 1; overflow-y: auto; padding: 16px; display: flex; flex-direction: column; gap: 12px; }
+      #footer { display: none; }
+    }
+
+    #viewfinder-wrap {
+      position: relative; background: #000; border-radius: 16px; overflow: hidden;
+      flex-shrink: 0; display: flex; align-items: center; justify-content: center;
+    }
+    #preview { width: 100%; height: 100%; object-fit: cover; display: none; }
+    #placeholder { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; }
+    .ph-icon { width: 64px; height: 64px; border-radius: 50%; background: var(--surface2); border: 1px solid var(--border2); display: flex; align-items: center; justify-content: center; font-size: 28px; }
+    .ph-text { font-family: var(--mono); font-size: 12px; color: var(--muted); text-align: center; line-height: 1.6; }
+    #rec-badge { position: absolute; top: 14px; left: 14px; display: none; align-items: center; gap: 6px; background: rgba(0,0,0,0.65); backdrop-filter: blur(8px); padding: 5px 12px 5px 8px; border-radius: 100px; font-family: var(--mono); font-size: 12px; color: #fff; }
+    #rec-badge .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--accent); animation: pdot 1s infinite; }
+    #format-badge { position: absolute; top: 14px; right: 14px; background: rgba(0,0,0,0.55); backdrop-filter: blur(8px); font-family: var(--mono); font-size: 11px; color: var(--muted); padding: 4px 10px; border-radius: 100px; }
+
+    #controls { display: flex; gap: 10px; }
+    @media (orientation: portrait) { #footer { padding: 12px 16px 16px; border-top: 1px solid var(--border); } #controls { width: 100%; } }
+    @media (orientation: landscape) { #controls { flex-direction: column; } }
+
+    .ctrl-btn { flex: 1; padding: 13px 10px; border-radius: 12px; border: 1px solid var(--border2); background: var(--surface); color: var(--text); font-family: var(--display); font-size: 14px; font-weight: 700; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 7px; transition: all 0.15s; }
+    .ctrl-btn:active { transform: scale(0.97); }
+    .ctrl-btn:disabled { opacity: 0.3; cursor: not-allowed; }
+    .ctrl-btn.rec { background: var(--accent); border-color: transparent; color: #fff; }
+    .ctrl-btn.stop { background: var(--surface); border-color: var(--accent); color: var(--accent); }
+
+    .panel { background: var(--surface); border: 1px solid var(--border); border-radius: 14px; overflow: hidden; }
+    .panel-header { padding: 10px 14px; border-bottom: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between; }
+    .panel-label { font-family: var(--mono); font-size: 10px; font-weight: 500; color: var(--muted); letter-spacing: 0.08em; text-transform: uppercase; }
+    .panel-body { padding: 12px 14px; }
+
+    #toast { font-family: var(--mono); font-size: 12px; padding: 10px 14px; border-radius: 10px; line-height: 1.5; display: none; }
+    #toast.show { display: block; }
+    #toast.success { background: rgba(46,204,113,0.12); color: var(--green); border: 1px solid rgba(46,204,113,0.2); }
+    #toast.error   { background: rgba(255,59,59,0.1);   color: #ff7070;      border: 1px solid rgba(255,59,59,0.2); }
+    #toast.info    { background: rgba(59,130,246,0.1);  color: #7ab3ff;      border: 1px solid rgba(59,130,246,0.2); }
+
+    .field-label { font-family: var(--mono); font-size: 10px; color: var(--muted); margin-bottom: 5px; letter-spacing: 0.06em; text-transform: uppercase; }
+    .field-wrap { margin-bottom: 10px; }
+    .field-wrap:last-child { margin-bottom: 0; }
+    input[type=text] { width: 100%; padding: 9px 12px; font-size: 13px; font-family: var(--mono); border: 1px solid var(--border2); border-radius: 8px; background: var(--surface2); color: var(--text); -webkit-appearance: none; transition: border-color 0.2s; }
+    input[type=text]:focus { outline: none; border-color: var(--blue); }
+
+    /* folder picker */
+    #folder-picker-wrap { position: relative; }
+    #folder-display {
+      width: 100%; padding: 9px 36px 9px 12px; font-size: 13px; font-family: var(--mono);
+      border: 1px solid var(--border2); border-radius: 8px; background: var(--surface2);
+      color: var(--text); cursor: pointer; text-align: left; display: flex; align-items: center; justify-content: space-between;
+      transition: border-color 0.2s;
+    }
+    #folder-display:hover { border-color: var(--blue); }
+    #folder-display .folder-name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    #folder-display .chevron { color: var(--muted); font-size: 10px; flex-shrink: 0; margin-left: 8px; }
+    #folder-dropdown {
+      display: none; position: absolute; top: calc(100% + 4px); left: 0; right: 0; z-index: 100;
+      background: var(--surface2); border: 1px solid var(--border2); border-radius: 10px;
+      overflow: hidden; max-height: 220px; overflow-y: auto;
+      box-shadow: 0 8px 32px rgba(0,0,0,0.5);
+    }
+    #folder-dropdown.open { display: block; }
+    .folder-item {
+      padding: 10px 14px; font-family: var(--mono); font-size: 12px; cursor: pointer;
+      display: flex; align-items: center; gap: 8px; border-bottom: 1px solid var(--border);
+      transition: background 0.1s;
+    }
+    .folder-item:last-child { border-bottom: none; }
+    .folder-item:hover { background: var(--surface); }
+    .folder-item.selected { color: var(--blue); }
+    .folder-item .fi { font-size: 14px; }
+    .folder-loading { padding: 14px; font-family: var(--mono); font-size: 11px; color: var(--muted); text-align: center; }
+    .folder-new-btn {
+      width: 100%; padding: 9px 12px; font-size: 12px; font-family: var(--mono);
+      border: 1px dashed var(--border2); border-radius: 8px; background: transparent;
+      color: var(--muted); cursor: pointer; margin-top: 8px; text-align: left;
+      transition: all 0.15s;
+    }
+    .folder-new-btn:hover { border-color: var(--blue); color: var(--blue); }
+
+    /* recordings */
+    .rec-item { padding: 12px 14px; border-bottom: 1px solid var(--border); display: flex; flex-direction: column; gap: 8px; }
+    .rec-item:last-child { border-bottom: none; }
+    .rec-item-top { display: flex; align-items: center; gap: 10px; }
+    .rec-thumb { width: 44px; height: 44px; border-radius: 8px; background: var(--surface2); border: 1px solid var(--border2); flex-shrink: 0; display: flex; align-items: center; justify-content: center; font-size: 18px; }
+    .rec-meta-wrap { flex: 1; min-width: 0; }
+    .rec-name { font-size: 13px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .rec-sub { font-family: var(--mono); font-size: 10px; color: var(--muted); margin-top: 2px; }
+    .rec-btns { display: flex; gap: 6px; }
+    .r-btn { flex: 1; padding: 7px 4px; border-radius: 8px; font-size: 11px; font-weight: 700; font-family: var(--display); border: 1px solid var(--border2); background: var(--surface2); color: var(--muted); cursor: pointer; text-align: center; text-decoration: none; display: flex; align-items: center; justify-content: center; gap: 3px; transition: all 0.15s; }
+    .r-btn:active { transform: scale(0.96); }
+    .r-btn.up { background: var(--blue); border-color: transparent; color: #fff; }
+    .r-btn.done { background: rgba(46,204,113,0.15); border-color: rgba(46,204,113,0.3); color: var(--green); }
+    .rename-row { display: flex; gap: 6px; }
+    .rename-row input { flex: 1; margin: 0; padding: 7px 10px; font-size: 12px; }
+    .rn-save { padding: 7px 12px; border-radius: 8px; border: none; background: var(--blue); color: #fff; font-size: 12px; font-weight: 700; font-family: var(--display); cursor: pointer; }
+    .rn-cancel { padding: 7px 10px; border-radius: 8px; border: 1px solid var(--border2); background: transparent; color: var(--muted); font-size: 12px; cursor: pointer; }
+    .empty-state { font-family: var(--mono); font-size: 11px; color: var(--muted); padding: 16px 14px; text-align: center; line-height: 1.7; }
+
+    .google-btn { width: 100%; padding: 11px; border-radius: 10px; border: 1px solid var(--border2); background: var(--surface2); color: var(--text); font-size: 14px; font-weight: 700; font-family: var(--display); cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 8px; transition: all 0.15s; }
+    .google-btn:hover { border-color: var(--blue); }
+  </style>
+</head>
+<body>
+<div id="shell">
+  <div id="header">
+    <div class="logo">cap<span>.</span>ture</div>
+    <div class="header-right">
+      <div id="status-dot"></div>
+      <button id="signin-pill" onclick="signIn()">sign in to google</button>
+    </div>
+  </div>
+
+  <div id="main">
+    <div id="viewfinder-wrap">
+      <video id="preview" autoplay muted playsinline></video>
+      <div id="placeholder">
+        <div class="ph-icon">📷</div>
+        <div class="ph-text">tap start camera<br>to begin</div>
+      </div>
+      <div id="rec-badge"><div class="dot"></div><span id="rec-timer">0:00</span><span style="color:var(--muted);margin-left:4px">REC</span></div>
+      <div id="format-badge">MP4 · 16:9</div>
+    </div>
+
+    <div id="sidebar">
+      <div id="toast"></div>
+
+      <!-- Drive panel -->
+      <div class="panel">
+        <div class="panel-header"><span class="panel-label">Google Drive</span></div>
+        <div class="panel-body">
+          <div class="field-wrap">
+            <div class="field-label">Client ID</div>
+            <input type="text" id="client-id" placeholder="paste your client id" oninput="saveSettings()" />
+          </div>
+          <button class="google-btn" id="signin-btn" onclick="signIn()">
+            <img src="https://www.google.com/favicon.ico" width="16" height="16" alt=""> Sign in with Google
+          </button>
+          <div style="margin-top:12px">
+            <div class="field-label" style="margin-bottom:6px">Save to folder</div>
+            <div id="folder-picker-wrap">
+              <button id="folder-display" onclick="toggleFolderDropdown()">
+                <span class="folder-name" id="folder-name-display">📁 My Videos (default)</span>
+                <span class="chevron">▼</span>
+              </button>
+              <div id="folder-dropdown">
+                <div class="folder-loading" id="folder-loading">sign in to browse folders</div>
+              </div>
+            </div>
+            <button class="folder-new-btn" id="new-folder-btn" onclick="promptNewFolder()">+ create new folder</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Recordings panel -->
+      <div class="panel">
+        <div class="panel-header">
+          <span class="panel-label">Recordings</span>
+          <span id="rec-count" style="font-family:var(--mono);font-size:10px;color:var(--muted)">0</span>
+        </div>
+        <div id="rec-list"><div class="empty-state">no recordings yet.<br>press record to start.</div></div>
+      </div>
+    </div>
+  </div>
+
+  <div id="footer">
+    <div id="controls">
+      <button class="ctrl-btn" id="btn-camera" onclick="startCamera()">📷 Start Camera</button>
+      <button class="ctrl-btn rec" id="btn-record" onclick="toggleRecord()" disabled>⏺ Record</button>
+    </div>
+  </div>
+</div>
+
+<script>
+let stream=null, mediaRecorder=null, chunks=[], timerInterval=null;
+let seconds=0, recordings=[], isRecording=false, accessToken=null, tokenExpiry=0;
+let renamingIndex=null, gsiClient=null;
+let selectedFolderId=null, selectedFolderName='My Videos';
+let folderDropdownOpen=false;
+
+/* ── layout ── */
+function syncControls() {
+  const isLand = window.matchMedia('(orientation: landscape)').matches;
+  const footer=document.getElementById('footer'), sidebar=document.getElementById('sidebar'), controls=document.getElementById('controls');
+  if (isLand) { if (!sidebar.contains(controls)) sidebar.insertBefore(controls, sidebar.firstChild); }
+  else        { if (!footer.contains(controls))  footer.appendChild(controls); }
+}
+window.addEventListener('resize', syncControls);
+window.addEventListener('orientationchange', () => setTimeout(syncControls, 100));
+
+/* ── storage ── */
+function saveSettings() {
+  localStorage.setItem('vr_client_id', document.getElementById('client-id').value);
+}
+function loadSettings() {
+  const cid = localStorage.getItem('vr_client_id');
+  if (cid) document.getElementById('client-id').value = cid;
+  const fn = localStorage.getItem('vr_folder_name');
+  const fi = localStorage.getItem('vr_folder_id');
+  if (fn) { selectedFolderName = fn; selectedFolderId = fi || null; updateFolderDisplay(); }
+}
+function saveFolderChoice(id, name) {
+  selectedFolderId = id; selectedFolderName = name;
+  localStorage.setItem('vr_folder_id', id || '');
+  localStorage.setItem('vr_folder_name', name);
+  updateFolderDisplay();
+}
+function saveToken(token, expiresIn) {
+  const expiry = Date.now() + (expiresIn - 60) * 1000;
+  localStorage.setItem('vr_token', token); localStorage.setItem('vr_expiry', expiry);
+  accessToken = token; tokenExpiry = expiry;
+}
+function loadToken() {
+  const t=localStorage.getItem('vr_token'), e=parseInt(localStorage.getItem('vr_expiry')||'0');
+  if (t && e && Date.now() < e) { accessToken=t; tokenExpiry=e; return true; }
+  return false;
+}
+function clearToken() { localStorage.removeItem('vr_token'); localStorage.removeItem('vr_expiry'); accessToken=null; tokenExpiry=0; }
+function isTokenValid() { return !!(accessToken && Date.now() < tokenExpiry); }
+
+/* ── toast ── */
+function toast(msg, type='info') {
+  const el=document.getElementById('toast');
+  el.innerHTML=msg; el.className='show '+type;
+  clearTimeout(el._t); el._t=setTimeout(()=>el.className='', 6000);
+}
+
+/* ── dot ── */
+function setDot(s) { document.getElementById('status-dot').className=s; }
+
+/* ── camera ── */
+async function startCamera() {
+  try {
+    stream = await navigator.mediaDevices.getUserMedia({
+      video: { facingMode:'environment', width:{ideal:1920}, height:{ideal:1080}, aspectRatio:{ideal:16/9} },
+      audio: true
+    });
+    const vid=document.getElementById('preview');
+    vid.srcObject=stream; vid.style.display='block';
+    document.getElementById('placeholder').style.display='none';
+    document.getElementById('btn-camera').disabled=true;
+    document.getElementById('btn-record').disabled=false;
+    localStorage.setItem('vr_cam_allowed','1');
+    toast('camera ready — press record to start.','info');
+  } catch(e) { toast('camera access denied. allow camera & mic in browser settings.','error'); }
+}
+
+/* ── recording ── */
+function toggleRecord() { if (!isRecording) startRecording(); else stopRecording(); }
+
+function getBestMime() {
+  const types=['video/mp4','video/mp4;codecs=avc1','video/webm;codecs=h264','video/webm;codecs=vp9','video/webm'];
+  return types.find(t=>MediaRecorder.isTypeSupported(t))||'';
+}
+
+function startRecording() {
+  chunks=[];
+  const mime=getBestMime();
+  try { mediaRecorder=new MediaRecorder(stream, mime?{mimeType:mime}:{}); }
+  catch(e) { mediaRecorder=new MediaRecorder(stream); }
+  mediaRecorder.ondataavailable=e=>{if(e.data.size>0)chunks.push(e.data);};
+  mediaRecorder.onstop=saveRecording;
+  mediaRecorder.start(1000);
+  isRecording=true; seconds=0;
+  document.getElementById('rec-badge').style.display='flex';
+  document.getElementById('btn-record').textContent='⏹ Stop';
+  document.getElementById('btn-record').className='ctrl-btn stop';
+  setDot('red');
+  timerInterval=setInterval(()=>{
+    seconds++;
+    const m=Math.floor(seconds/60),s=seconds%60;
+    document.getElementById('rec-timer').textContent=`${m}:${s.toString().padStart(2,'0')}`;
+  },1000);
+}
+
+function stopRecording() {
+  mediaRecorder.stop(); isRecording=false; clearInterval(timerInterval);
+  document.getElementById('rec-badge').style.display='none';
+  document.getElementById('btn-record').innerHTML='⏺ Record';
+  document.getElementById('btn-record').className='ctrl-btn rec';
+  if (isTokenValid()) setDot('green'); else setDot('');
+}
+
+function saveRecording() {
+  const usedMime=mediaRecorder.mimeType||chunks[0]?.type||'video/webm';
+  const ext=usedMime.includes('mp4')?'mp4':'webm';
+  const blob=new Blob(chunks,{type:usedMime});
+  const name=`capture_${new Date().toISOString().replace(/[:.]/g,'-').slice(0,19)}`;
+  const size=(blob.size/(1024*1024)).toFixed(1)+' MB';
+  const url=URL.createObjectURL(blob);
+  recordings.unshift({name,ext,blob,size,url,uploaded:false});
+  renderRecordings();
+  toast(`✓ saved ${name}.${ext} (${size}) — tap upload to send to drive.`,'success');
+}
+
+/* ── recordings UI ── */
+function renderRecordings() {
+  document.getElementById('rec-count').textContent=recordings.length;
+  const list=document.getElementById('rec-list');
+  if (!recordings.length) { list.innerHTML='<div class="empty-state">no recordings yet.<br>press record to start.</div>'; return; }
+  list.innerHTML=recordings.map((r,i)=>{
+    const isRen=renamingIndex===i;
+    return `
+    <div class="rec-item" id="rec-${i}">
+      <div class="rec-item-top">
+        <div class="rec-thumb">🎬</div>
+        <div class="rec-meta-wrap">
+          <div class="rec-name">${r.name}.${r.ext}</div>
+          <div class="rec-sub">${r.size} · ${r.ext.toUpperCase()}</div>
+        </div>
+      </div>
+      ${isRen?`<div class="rename-row"><input type="text" id="rni-${i}" value="${r.name}" /><button class="rn-save" onclick="saveRename(${i})">save</button><button class="rn-cancel" onclick="cancelRename()">✕</button></div>`:''}
+      <div class="rec-btns">
+        <a class="r-btn" href="${r.url}" download="${r.name}.${r.ext}">⬇ save</a>
+        <button class="r-btn" onclick="startRename(${i})">✏ rename</button>
+        <button class="r-btn ${r.uploaded?'done':'up'}" onclick="uploadToDrive(${i})" ${r.uploaded?'disabled':''}>
+          ${r.uploaded?'✓ done':'☁ upload'}
+        </button>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function startRename(i) { renamingIndex=i; renderRecordings(); setTimeout(()=>{const el=document.getElementById(`rni-${i}`);if(el){el.focus();el.select();}},40); }
+function saveRename(i) { const el=document.getElementById(`rni-${i}`); if(el){const n=el.value.trim().replace(/[\/\\:*?"<>|]/g,'_');if(n)recordings[i].name=n;} renamingIndex=null; renderRecordings(); }
+function cancelRename() { renamingIndex=null; renderRecordings(); }
+
+/* ── folder picker ── */
+function updateFolderDisplay() {
+  document.getElementById('folder-name-display').textContent = '📁 ' + selectedFolderName;
+}
+
+function toggleFolderDropdown() {
+  const dd=document.getElementById('folder-dropdown');
+  folderDropdownOpen=!folderDropdownOpen;
+  if (folderDropdownOpen) {
+    dd.classList.add('open');
+    if (isTokenValid()) loadFolders();
+    else { document.getElementById('folder-loading').textContent='sign in to browse folders'; }
+  } else {
+    dd.classList.remove('open');
+  }
+}
+
+document.addEventListener('click', e => {
+  if (!document.getElementById('folder-picker-wrap').contains(e.target)) {
+    document.getElementById('folder-dropdown').classList.remove('open');
+    folderDropdownOpen=false;
+  }
+});
+
+async function loadFolders() {
+  const loading=document.getElementById('folder-loading');
+  loading.style.display='block'; loading.textContent='loading folders…';
+  // clear old items except loading
+  const dd=document.getElementById('folder-dropdown');
+  Array.from(dd.querySelectorAll('.folder-item')).forEach(el=>el.remove());
+  try {
+    const q=`mimeType='application/vnd.google-apps.folder' and trashed=false`;
+    const res=await fetch(`https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(q)}&orderBy=name&pageSize=50&fields=files(id,name,parents)`,
+      {headers:{Authorization:`Bearer ${accessToken}`}});
+    if (!res.ok) throw new Error('api error '+res.status);
+    const data=await res.json();
+    loading.style.display='none';
+    if (!data.files || data.files.length===0) {
+      loading.style.display='block'; loading.textContent='no folders found'; return;
+    }
+    data.files.forEach(f=>{
+      const item=document.createElement('div');
+      item.className='folder-item'+(selectedFolderId===f.id?' selected':'');
+      item.innerHTML=`<span class="fi">📁</span><span>${f.name}</span>`;
+      item.onclick=()=>{ saveFolderChoice(f.id, f.name); document.getElementById('folder-dropdown').classList.remove('open'); folderDropdownOpen=false; toast(`folder set to "${f.name}"`,'info'); };
+      dd.appendChild(item);
+    });
+  } catch(e) {
+    loading.style.display='block'; loading.textContent='failed to load — try signing in again';
+  }
+}
+
+function promptNewFolder() {
+  const name=prompt('New folder name:');
+  if (!name || !name.trim()) return;
+  if (!isTokenValid()) { toast('sign in to google first.','error'); return; }
+  createDriveFolder(name.trim());
+}
+
+async function createDriveFolder(name) {
+  toast('creating folder…','info');
+  try {
+    const res=await fetch('https://www.googleapis.com/drive/v3/files',{
+      method:'POST',
+      headers:{Authorization:`Bearer ${accessToken}`,'Content-Type':'application/json'},
+      body:JSON.stringify({name,mimeType:'application/vnd.google-apps.folder'})
+    });
+    if (!res.ok) throw new Error('api error');
+    const f=await res.json();
+    saveFolderChoice(f.id, f.name);
+    toast(`✓ folder "${f.name}" created and selected`,'success');
+  } catch(e) { toast('failed to create folder.','error'); }
+}
+
+/* ── Google sign-in ── */
+function buildGsiClient(clientId) {
+  gsiClient=google.accounts.oauth2.initTokenClient({
+    client_id:clientId,
+    scope:'https://www.googleapis.com/auth/drive.file https://www.googleapis.com/auth/drive.readonly',
+    callback:(resp)=>{
+      if (resp.access_token) {
+        saveToken(resp.access_token, resp.expires_in||3600);
+        markSignedIn();
+        toast('signed in to google ✓','success');
+      } else {
+        toast('sign-in failed: '+(resp.error||'unknown'),'error');
+      }
+    },
+    error_callback:(e)=>{ toast('sign-in error: '+e.type,'error'); }
+  });
+}
+
+function markSignedIn() {
+  const pill=document.getElementById('signin-pill');
+  pill.textContent='✓ google connected'; pill.classList.add('active');
+  document.getElementById('signin-btn').innerHTML='<img src="https://www.google.com/favicon.ico" width="16" height="16" alt=""> ✓ signed in — tap to refresh';
+  setDot('green');
+}
+
+function signIn() {
+  const clientId=document.getElementById('client-id').value.trim();
+  if (!clientId) { toast('paste your client id first.','error'); return; }
+  saveSettings();
+  if (!gsiClient) buildGsiClient(clientId);
+  gsiClient.requestAccessToken();
+}
+
+function trySilentRefresh(clientId) {
+  if (!clientId) return;
+  try {
+    google.accounts.oauth2.initTokenClient({
+      client_id:clientId,
+      scope:'https://www.googleapis.com/auth/drive.file https://www.googleapis.com/auth/drive.readonly',
+      prompt:'',
+      callback:(resp)=>{ if(resp.access_token){saveToken(resp.access_token,resp.expires_in||3600);markSignedIn();} },
+      error_callback:()=>{}
+    }).requestAccessToken({prompt:''});
+  } catch(e){}
+}
+
+/* ── upload ── */
+async function uploadToDrive(index) {
+  console.log('uploadToDrive called', index, 'token valid:', isTokenValid());
+  if (!isTokenValid()) { toast('sign in to google first — tap the button above.','error'); return; }
+  const rec=recordings[index];
+  if (!rec) { toast('recording not found.','error'); return; }
+
+  // get or create folder
+  let folderId=selectedFolderId;
+  if (!folderId) {
+    toast('finding/creating folder…','info');
+    try {
+      const q=`name='${selectedFolderName}' and mimeType='application/vnd.google-apps.folder' and trashed=false`;
+      const sr=await fetch(`https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(q)}`,
+        {headers:{Authorization:`Bearer ${accessToken}`}});
+      if (!sr.ok) throw new Error('search failed '+sr.status);
+      const sd=await sr.json();
+      if (sd.files && sd.files.length>0) {
+        folderId=sd.files[0].id;
+      } else {
+        const cr=await fetch('https://www.googleapis.com/drive/v3/files',{
+          method:'POST',
+          headers:{Authorization:`Bearer ${accessToken}`,'Content-Type':'application/json'},
+          body:JSON.stringify({name:selectedFolderName,mimeType:'application/vnd.google-apps.folder'})
+        });
+        if (!cr.ok) throw new Error('create failed '+cr.status);
+        const cf=await cr.json(); folderId=cf.id;
+      }
+      saveFolderChoice(folderId, selectedFolderName);
+    } catch(e) { toast('folder error: '+e.message,'error'); return; }
+  }
+
+  const fileName=`${rec.name}.${rec.ext}`;
+  toast(`uploading ${fileName}…`,'info');
+
+  try {
+    const metadata=JSON.stringify({name:fileName, parents:[folderId]});
+    const form=new FormData();
+    form.append('metadata', new Blob([metadata],{type:'application/json'}));
+    form.append('file', rec.blob);
+
+    const res=await fetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart',{
+      method:'POST',
+      headers:{Authorization:`Bearer ${accessToken}`},
+      body:form
+    });
+
+    console.log('upload response status:', res.status);
+
+    if (res.ok) {
+      recordings[index].uploaded=true; renderRecordings();
+      toast(`✓ uploaded to "${selectedFolderName}" in drive!`,'success');
+    } else {
+      const err=await res.json().catch(()=>({}));
+      console.error('upload error body:', err);
+      if (err.error?.code===401) { clearToken(); toast('session expired — sign in again.','error'); }
+      else toast('upload failed: '+(err.error?.message||'status '+res.status),'error');
+    }
+  } catch(e) {
+    console.error('upload exception:', e);
+    toast('upload error: '+e.message,'error');
+  }
+}
+
+/* ── init ── */
+window.addEventListener('load', ()=>{
+  loadSettings(); syncControls();
+  if (loadToken()) markSignedIn();
+  const clientId=document.getElementById('client-id').value.trim();
+  if (localStorage.getItem('vr_cam_allowed')==='1') startCamera();
+  const waitGsi=setInterval(()=>{
+    if (typeof google!=='undefined'&&google.accounts) {
+      clearInterval(waitGsi);
+      if (clientId) { buildGsiClient(clientId); if (!isTokenValid()) trySilentRefresh(clientId); }
+    }
+  },300);
+});
+</script>
+</body>
+</html>
